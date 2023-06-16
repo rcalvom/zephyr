@@ -23,6 +23,7 @@ LOG_MODULE_REGISTER(LOG_MODULE_NAME);
 #include <stdbool.h>
 #include <errno.h>
 #include <stddef.h>
+#include <stdlib.h>
 
 #include <zephyr/net/net_pkt.h>
 #include <zephyr/net/net_core.h>
@@ -36,6 +37,10 @@ LOG_MODULE_REGISTER(LOG_MODULE_NAME);
 
 #include "eth_native_posix_priv.h"
 #include "eth.h"
+
+#include <sanitizer/asan_interface.h>
+
+#include "../../../../test_server/src/out.h"
 
 #define NET_BUF_TIMEOUT K_MSEC(100)
 
@@ -192,11 +197,35 @@ static int eth_send(const struct device *dev, struct net_pkt *pkt)
 	update_gptp(net_pkt_iface(pkt), pkt, true);
 
 	LOG_DBG("Send pkt %p len %d", pkt, count);
+	
+	unsigned char *eth_header = malloc(14);
+	*(eth_header + 0) = 0x46;
+	*(eth_header + 1) = 0xE7;
+	*(eth_header + 2) = 0xD7;
+	*(eth_header + 3) = 0xAA;
+	*(eth_header + 4) = 0x9B;
+	*(eth_header + 5) = 0x5F;
+	*(eth_header + 6) = 0x00;
+	*(eth_header + 7) = 0x11;
+	*(eth_header + 8) = 0x22;
+	*(eth_header + 9) = 0x33;
+	*(eth_header + 10) = 0x44;
+	*(eth_header + 11) = 0x41;
+	*(eth_header + 12) = 0x08;
+	*(eth_header + 13) = 0x00;
 
-	ret = eth_write_data(ctx->dev_fd, ctx->send, count);
+	int size_to_send = 14 + pkt->buffer->size;
+	unsigned char* buffer_to_send = malloc(size_to_send);
+	memcpy(buffer_to_send, eth_header, 14);
+	memcpy(buffer_to_send + 14, pkt->buffer->data, pkt->buffer->size);
+
+	ret = (int) print_output(buffer_to_send, size_to_send);
+	//ret = eth_write_data(ctx->dev_fd, ctx->send, count);
 	if (ret < 0) {
-		LOG_DBG("Cannot send pkt %p (%d)", pkt, ret);
+		printk("Cannot send pkt %p (%d)", pkt, ret);
 	}
+	free(eth_header);
+	free(buffer_to_send);
 
 	return ret < 0 ? ret : 0;
 }
@@ -356,7 +385,7 @@ static int read_data(struct eth_context *ctx, int fd)
 	iface = get_iface(ctx, vlan_tag);
 
 	update_gptp(iface, pkt, false);
-
+	printf("Is This been called??\n");
 	if (net_recv_data(iface, pkt) < 0) {
 		net_pkt_unref(pkt);
 	}
@@ -432,17 +461,21 @@ static void eth_iface_init(struct net_if *iface)
 
 #if defined(CONFIG_ETH_NATIVE_POSIX_RANDOM_MAC)
 	/* 00-00-5E-00-53-xx Documentation RFC 7042 */
-	gen_random_mac(ctx->mac_addr, 0x00, 0x00, 0x5E);
+	//gen_random_mac(ctx->mac_addr, 0x00, 0x00, 0x5E);
 
-	ctx->mac_addr[3] = 0x00;
-	ctx->mac_addr[4] = 0x53;
+	ctx->mac_addr[0] = 0x00;
+	ctx->mac_addr[1] = 0x11;
+	ctx->mac_addr[2] = 0x22;
+	ctx->mac_addr[3] = 0x33;
+	ctx->mac_addr[4] = 0x44;
+	ctx->mac_addr[5] = 0x41;
 
 	/* The TUN/TAP setup script will by default set the MAC address of host
 	 * interface to 00:00:5E:00:53:FF so do not allow that.
 	 */
-	if (ctx->mac_addr[5] == 0xff) {
+	/*if (ctx->mac_addr[5] == 0xff) {
 		ctx->mac_addr[5] = 0x01;
-	}
+	}*/
 #else
 	/* Difficult to configure MAC addresses any sane way if we have more
 	 * than one network interface.

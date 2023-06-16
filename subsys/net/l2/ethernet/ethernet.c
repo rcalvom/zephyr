@@ -384,7 +384,7 @@ static struct net_pkt *ethernet_ll_prepare_on_ipv4(struct net_if *iface,
 	if (IS_ENABLED(CONFIG_NET_ARP)) {
 		struct net_pkt *arp_pkt;
 
-		arp_pkt = net_arp_prepare(pkt, (struct in_addr *)NET_IPV4_HDR(pkt)->dst, NULL);
+		arp_pkt = pkt;//net_arp_prepare(pkt, (struct in_addr *)NET_IPV4_HDR(pkt)->dst, NULL);
 		if (!arp_pkt) {
 			return NULL;
 		}
@@ -561,7 +561,7 @@ static struct net_buf *ethernet_fill_header(struct ethernet_context *ctx,
 			       hdr_frag->len, &hdr->src, &hdr->dst);
 	}
 
-	net_pkt_frag_insert(pkt, hdr_frag);
+	//net_pkt_frag_insert(pkt, hdr_frag);
 
 	return hdr_frag;
 }

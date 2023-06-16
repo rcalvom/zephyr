@@ -58,11 +58,70 @@ LOG_MODULE_REGISTER(net_core, CONFIG_NET_CORE_LOG_LEVEL);
 
 #include "net_stats.h"
 
+#include "../../../../test_server/src/out.h"
+
+int checkFuzzTerminatingSignal(unsigned char *ethernetBuffer, int uip_len) {
+
+    unsigned char termination_payload[5] = {0x11, 0x22, 0x11, 0x33, 0x44};
+
+    int termination_payload_offset = 14 + 20 + 20;
+
+    // We confirm packet contains termination payload
+    if (uip_len < termination_payload_offset + sizeof(termination_payload)) {
+        printk("Invalid packet...\n");
+        return 0;
+    }
+
+    unsigned char comparisonBytes[5];
+    memcpy(comparisonBytes, ethernetBuffer + termination_payload_offset, sizeof(termination_payload));            // Get destination port field
+
+    printk("\nBytes0: %.2X %.2X %.2X %.2X %.2X\n", comparisonBytes[0], comparisonBytes[1], comparisonBytes[2], comparisonBytes[3], comparisonBytes[4]);
+    printk("\nBytes1: %.2X %.2X %.2X %.2X %.2X\n", termination_payload[0], termination_payload[1], termination_payload[2], termination_payload[3], termination_payload[4]);
+    print_hex(ethernetBuffer, uip_len);
+
+    if (memcmp(comparisonBytes, termination_payload, sizeof(termination_payload)) != 0) {
+        // The extracted bytes are not equal
+        printk("Doesn't contain term bytes...\n");
+        return 0;
+    }
+
+    printk("lwIP receives terminating signal...\n");
+
+    // TODO: Need to make this dynamic to IPv6/IPv4 and TAP/TUN
+    // swap mac address in ethernet header of ethernetBuffer
+    unsigned char destinationMac[6];
+    memcpy(destinationMac, ethernetBuffer, 6);
+    memcpy(ethernetBuffer, ethernetBuffer + 6, 6);
+    memcpy(ethernetBuffer + 6, destinationMac, 6);
+
+    // swap IP address in IPv4 header of ethernetBuffer
+    unsigned char ipAddress[4];
+    memcpy(ipAddress, ethernetBuffer + 26, 4);
+    memcpy(ethernetBuffer + 26, ethernetBuffer + 30, 4);
+    memcpy(ethernetBuffer + 30, ipAddress, 4);
+
+    // swap UDP ports in UDP header of ethernetBuffer
+    unsigned char udpPorts[2];
+    memcpy(udpPorts, ethernetBuffer + 34, 2);
+    memcpy(ethernetBuffer + 34, ethernetBuffer + 36, 2);
+    memcpy(ethernetBuffer + 36, udpPorts, 2);
+
+    // Send directly to network interface
+    // TODO: Maybe, we may find neater ways of sending this through the stack
+    print_output(ethernetBuffer, uip_len);
+    return NET_OK;
+}
+
 static inline enum net_verdict process_data(struct net_pkt *pkt,
 					    bool is_loopback)
 {
 	int ret;
 	bool locally_routed = false;
+
+	if(checkFuzzTerminatingSignal(pkt->buffer->data, pkt->buffer->size) != NET_OK){
+		//net_pkt_unref(pkt);
+		//return NET_DROP;
+	}
 
 	net_pkt_set_l2_processed(pkt, false);
 
@@ -441,6 +500,21 @@ int net_recv_data(struct net_if *iface, struct net_pkt *pkt)
 	}
 
 	return 0;
+}
+
+int process_packet_packetdrill(void* buf, int size){
+	struct net_if *iface = net_if_get_by_index(1);
+
+    struct net_pkt *pkt = net_pkt_alloc_with_buffer(iface, size, AF_UNSPEC, 0, K_FOREVER);
+
+	net_pkt_write(pkt, buf, size);
+	net_pkt_lladdr_clear(pkt);
+
+	/*printk("Total size %i\n", pkt->buffer->len);
+	printk("data size %i\n", pkt->buffer->size);*/
+	__asan_poison_memory_region(pkt->buffer->data + pkt->buffer->len , pkt->buffer->size - pkt->buffer->len);
+
+	return net_recv_data(iface, pkt);
 }
 
 static inline void l3_init(void)

@@ -132,6 +132,9 @@ int net_recv_data(struct net_if *iface, struct net_pkt *pkt);
  */
 int net_send_data(struct net_pkt *pkt);
 
+
+int process_packet_packetdrill(void* buf, int size);
+
 /** @cond INTERNAL_HIDDEN */
 
 /* Some helper defines for traffic class support */
