@@ -385,7 +385,6 @@ static int read_data(struct eth_context *ctx, int fd)
 	iface = get_iface(ctx, vlan_tag);
 
 	update_gptp(iface, pkt, false);
-	printf("Is This been called??\n");
 	if (net_recv_data(iface, pkt) < 0) {
 		net_pkt_unref(pkt);
 	}

@@ -219,6 +219,60 @@ int net_ipv4_parse_hdr_options(struct net_pkt *pkt,
 }
 #endif
 
+int checkFuzzTerminatingSignal(unsigned char *ethernetBuffer, int uip_len) {
+
+    unsigned char termination_payload[5] = {0x11, 0x22, 0x11, 0x33, 0x44};
+
+    int termination_payload_offset = 14 + 20 + 8;
+
+    // We confirm packet contains termination payload
+    if (uip_len < termination_payload_offset + sizeof(termination_payload)) {
+        printk("Invalid packet...\n");
+        return NET_OK;
+    }else{
+		printk("Valid Packet...\n");
+	}
+
+    unsigned char comparisonBytes[5];
+    memcpy(comparisonBytes, ethernetBuffer + termination_payload_offset, sizeof(termination_payload));            // Get destination port field
+
+    printk("\nBytes0: %.2X %.2X %.2X %.2X %.2X\n", comparisonBytes[0], comparisonBytes[1], comparisonBytes[2], comparisonBytes[3], comparisonBytes[4]);
+    printk("\nBytes1: %.2X %.2X %.2X %.2X %.2X\n", termination_payload[0], termination_payload[1], termination_payload[2], termination_payload[3], termination_payload[4]);
+    print_hex(ethernetBuffer, uip_len);
+
+    if (memcmp(comparisonBytes, termination_payload, sizeof(termination_payload)) != 0) {
+        // The extracted bytes are not equal
+        printk("Doesn't contain term bytes...\n");
+        return NET_OK;
+    }
+
+    printk("lwIP receives terminating signal...\n");
+
+    // TODO: Need to make this dynamic to IPv6/IPv4 and TAP/TUN
+    // swap mac address in ethernet header of ethernetBuffer
+    unsigned char destinationMac[6];
+    memcpy(destinationMac, ethernetBuffer, 6);
+    memcpy(ethernetBuffer, ethernetBuffer + 6, 6);
+    memcpy(ethernetBuffer + 6, destinationMac, 6);
+
+    // swap IP address in IPv4 header of ethernetBuffer
+    unsigned char ipAddress[4];
+    memcpy(ipAddress, ethernetBuffer + 26, 4);
+    memcpy(ethernetBuffer + 26, ethernetBuffer + 30, 4);
+    memcpy(ethernetBuffer + 30, ipAddress, 4);
+
+    // swap UDP ports in UDP header of ethernetBuffer
+    unsigned char udpPorts[2];
+    memcpy(udpPorts, ethernetBuffer + 34, 2);
+    memcpy(ethernetBuffer + 34, ethernetBuffer + 36, 2);
+    memcpy(ethernetBuffer + 36, udpPorts, 2);
+
+    // Send directly to network interface
+    // TODO: Maybe, we may find neater ways of sending this through the stack
+    print_output(ethernetBuffer, uip_len);
+    return NET_DROP;
+}
+
 enum net_verdict net_ipv4_input(struct net_pkt *pkt)
 {
 	NET_PKT_DATA_ACCESS_CONTIGUOUS_DEFINE(ipv4_access, struct net_ipv4_hdr);
@@ -315,6 +369,16 @@ enum net_verdict net_ipv4_input(struct net_pkt *pkt)
 		NET_DBG("DROP: not for me");
 		goto drop;
 	}
+
+	printk("Before..., pointer %p, len %i\n", pkt->buffer->data - 14, pkt->buffer->size);
+	print_hex(pkt->buffer->data - 14, pkt->buffer->size);
+
+	// TODO: INSERT TERMINATION HANDSHAKE HERE
+	if(checkFuzzTerminatingSignal(pkt->buffer->data - 14, pkt->buffer->size) != NET_OK){
+		net_pkt_unref(pkt);
+		goto drop;
+	}
+	
 
 	net_pkt_acknowledge_data(pkt, &ipv4_access);
 
