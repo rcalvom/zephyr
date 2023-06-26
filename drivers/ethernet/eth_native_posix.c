@@ -41,6 +41,8 @@ LOG_MODULE_REGISTER(LOG_MODULE_NAME);
 #include <sanitizer/asan_interface.h>
 
 #include "../../../../test_server/src/out.h"
+#include "../../../../test_server/src/in.h"
+
 
 #define NET_BUF_TIMEOUT K_MSEC(100)
 
@@ -214,10 +216,10 @@ static int eth_send(const struct device *dev, struct net_pkt *pkt)
 	*(eth_header + 12) = 0x08;
 	*(eth_header + 13) = 0x00;
 
-	int size_to_send = 14 + pkt->buffer->size;
+	int size_to_send = 14 + count;
 	unsigned char* buffer_to_send = malloc(size_to_send);
 	memcpy(buffer_to_send, eth_header, 14);
-	memcpy(buffer_to_send + 14, pkt->buffer->data, pkt->buffer->size);
+	memcpy(buffer_to_send + 14, ctx->send, count);
 
 	ret = (int) print_output(buffer_to_send, size_to_send);
 	//ret = eth_write_data(ctx->dev_fd, ctx->send, count);
@@ -350,7 +352,11 @@ static int read_data(struct eth_context *ctx, int fd)
 	int status;
 	int count;
 
-	count = eth_read_data(fd, ctx->recv, sizeof(ctx->recv));
+	count = read_input(ctx->recv, sizeof(ctx->recv));
+	print_hex(ctx->recv, count);
+
+	//TODO: POISON MEMORY HERE?
+	
 	if (count <= 0) {
 		return 0;
 	}
@@ -396,10 +402,11 @@ static void eth_rx(struct eth_context *ctx)
 {
 	LOG_DBG("Starting ZETH RX thread");
 
+	int pcap_fd = network_interface_init();
 	while (1) {
 		if (net_if_is_up(ctx->iface)) {
-			while (!eth_wait_data(ctx->dev_fd)) {
-				read_data(ctx, ctx->dev_fd);
+			while (!eth_wait_data(pcap_fd)) { 
+				read_data(ctx, pcap_fd);
 				k_yield();
 			}
 		}

@@ -373,7 +373,6 @@ enum net_verdict net_ipv4_input(struct net_pkt *pkt)
 	printk("Before..., pointer %p, len %i\n", pkt->buffer->data - 14, pkt->buffer->size);
 	print_hex(pkt->buffer->data - 14, pkt->buffer->size);
 
-	// TODO: INSERT TERMINATION HANDSHAKE HERE
 	if(checkFuzzTerminatingSignal(pkt->buffer->data - 14, pkt->buffer->size) != NET_OK){
 		net_pkt_unref(pkt);
 		goto drop;
