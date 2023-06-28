@@ -67,9 +67,14 @@ int eth_iface_create(const char *if_name, bool tun_only)
 #ifdef __linux
 	ifr.ifr_flags = (tun_only ? IFF_TUN : IFF_TAP) | IFF_NO_PI;
 
-	strncpy(ifr.ifr_name, if_name, IFNAMSIZ - 1);
-
+	char* device_name = malloc(1024);
+	memset(device_name, 0, 1024);
+	strcat(device_name, if_name);
+	strcat(device_name, getenv("TAP_INTERFACE_NAME"));
+	printk("device_name = %s\n", device_name);
+	strncpy(ifr.ifr_name, device_name, IFNAMSIZ - 1);
 	ret = ioctl(fd, TUNSETIFF, (void *)&ifr);
+	free(device_name);
 	if (ret < 0) {
 		ret = -errno;
 		close(fd);
